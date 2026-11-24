@@ -328,6 +328,11 @@ A scheduled automation's `maxRetries` (0–5, default 0) lets a run whose launch
 prompt is sent wait as `retrying` and relaunch in place, with exponential backoff; manual and event
 runs are never retried.
 
+A schedule automation's `maxConcurrentRuns` (1–10, default 1) bounds how many of its scheduled and
+manual invocations may have an active run at once. It counts invocations, not runs, so a fan-out
+firing holds one slot; a firing at the bound is skipped (schedule) or rejected with `409` (manual).
+One-shots and other trigger types keep the default.
+
 #### Webhook triggers
 
 Webhook automations are called with their API key (`Authorization: Bearer <key>`) instead of a user
