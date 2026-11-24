@@ -56,6 +56,15 @@ function botPrompt(sessionId: string) {
   });
 }
 
+async function cancelPending(sessionId: string) {
+  const row = await env.DB.prepare(
+    "SELECT cancel_pending FROM github_pr_review_sessions WHERE session_id = ?"
+  )
+    .bind(sessionId)
+    .first<{ cancel_pending: number }>();
+  return row?.cancel_pending;
+}
+
 async function sessionStatus(sessionId: string) {
   return (await new SessionIndexStore(env.DB).get(sessionId))?.status;
 }
@@ -86,13 +95,14 @@ describe("POST /github/reviews/supersede", () => {
     expect(await sessionStatus(first.sessionName)).toBe("cancelled");
     expect(await sessionStatus(second.sessionName)).toBe("created");
     const store = new GitHubPrReviewStore(sqlDatabase(env.DB));
-    await expect(store.isSuperseded(first.sessionName)).resolves.toBe(false);
+    await expect(store.isSuperseded(first.sessionName)).resolves.toBe(true);
     await expect(store.isSuperseded(second.sessionName)).resolves.toBe(false);
+    expect(await cancelPending(first.sessionName)).toBe(0);
 
-    // A cancelled session refuses the github-bot's late prompt on its own; the new one takes it.
+    // The displaced session refuses the github-bot's late prompt; the new one takes it.
     const late = await botPrompt(first.sessionName);
     expect(late.status).toBe(409);
-    await expect(late.json()).resolves.toMatchObject({ code: "SESSION_NOT_PROMPTABLE" });
+    await expect(late.json()).resolves.toMatchObject({ code: "review_superseded" });
     expect((await botPrompt(second.sessionName)).status).toBe(200);
   });
 
@@ -111,11 +121,11 @@ describe("POST /github/reviews/supersede", () => {
 
   it("refuses the github-bot's prompt to a displaced review whose cancel is still pending", async () => {
     const pending = { sessionName: await createReviewSession() };
-    // The state a failed cancel leaves behind: displaced, but not yet deleted.
+    // The state a failed cancel leaves behind: displaced, with its cancel still pending.
     await env.DB.prepare(
       `INSERT INTO github_pr_review_sessions
-         (session_id, repository_id, pull_number, superseded_by, created_at, updated_at)
-       VALUES (?, ?, ?, 'review-newer', 1, 1)`
+         (session_id, repository_id, pull_number, superseded_by, cancel_pending, created_at, updated_at)
+       VALUES (?, ?, ?, 'review-newer', 1, 1, 1)`
     )
       .bind(pending.sessionName, REPOSITORY_ID, PULL_NUMBER)
       .run();
@@ -125,12 +135,12 @@ describe("POST /github/reviews/supersede", () => {
     await expect(prompt.json()).resolves.toMatchObject({ code: "review_superseded" });
     expect(await sessionStatus(pending.sessionName)).toBe("created");
 
-    // Only the github-bot is fenced: the session's web participants can still prompt it.
+    // Only the github-bot is fenced: a workspace owner can still prompt the session from the web.
     const web = await serviceFetch(`${BASE}/sessions/${pending.sessionName}/prompt`, {
       method: "POST",
       body: JSON.stringify({ content: "continue anyway" }),
     });
-    expect(web.status).not.toBe(409);
+    expect(web.status).toBe(200);
   });
 
   it("retries a pending cancel by session id on the next claim of the pull request", async () => {
@@ -138,8 +148,8 @@ describe("POST /github/reviews/supersede", () => {
     const next = await initSession({ sessionName: "review-next" });
     await env.DB.prepare(
       `INSERT INTO github_pr_review_sessions
-         (session_id, repository_id, pull_number, superseded_by, created_at, updated_at)
-       VALUES (?, ?, ?, 'review-gone', 1, 1)`
+         (session_id, repository_id, pull_number, superseded_by, cancel_pending, created_at, updated_at)
+       VALUES (?, ?, ?, 'review-gone', 1, 1, 1)`
     )
       .bind(pending.sessionName, REPOSITORY_ID, PULL_NUMBER)
       .run();
@@ -150,9 +160,7 @@ describe("POST /github/reviews/supersede", () => {
       cancelPendingSessionIds: [],
     });
     expect(await sessionStatus(pending.sessionName)).toBe("cancelled");
-    await expect(
-      new GitHubPrReviewStore(sqlDatabase(env.DB)).isSuperseded(pending.sessionName)
-    ).resolves.toBe(false);
+    expect(await cancelPending(pending.sessionName)).toBe(0);
   });
 
   it("rejects an actor and every caller other than the github bot", async () => {

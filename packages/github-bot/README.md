@@ -56,9 +56,11 @@ Key design decisions:
   sandbox.
 - **No session reuse**: Every non-duplicate webhook delivery creates a fresh session. Delivery
   dedupe is handled separately in KV using `X-GitHub-Delivery`.
-- **One running review per PR**: A new auto-review or review request replaces the PR's previous
-  review session, which the control plane cancels on a best-effort basis. Mention sessions are
-  independent: they neither cancel reviews nor are cancelled by them.
+- **Replacing an earlier review**: A new auto-review or review request becomes the PR's current
+  review, and the control plane attempts to cancel the previous review session. This is best effort:
+  the previous session may finish a turn already underway, or keep running if its cancel fails
+  (retried on the PR's next review). Mention sessions are independent: they neither cancel reviews
+  nor are cancelled by them.
 - **No PR context fetching**: The bot only uses metadata already in the webhook payload. The agent
   gathers additional context (diffs, prior comments, file contents) itself using `gh` CLI.
 

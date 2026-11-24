@@ -68,8 +68,8 @@ async function cancelDisplacedReview(
  * best-effort cancel the review it replaced and retry earlier failed cancels.
  *
  * The new review always proceeds: a failed cancel is not an error. The displaced
- * row stays in place, which keeps the github-bot's prompts to that session
- * refused and lets the next review of the pull request retry the cancel by id.
+ * row keeps cancel_pending set so the next review of the pull request retries the
+ * cancel by id; the github-bot's prompts to a displaced session are refused.
  */
 export async function handleGitHubReviewSupersede(
   request: Request,
@@ -110,7 +110,7 @@ export async function handleGitHubReviewSupersede(
   };
   for (const sessionId of [...displacedSessionIds, ...retrySessionIds]) {
     if ((await cancelDisplacedReview(ctx, sessionId)) === "cancelled") {
-      await store.deleteDisplaced(sessionId);
+      await store.markCancelled(sessionId, Date.now());
       result.cancelledSessionIds.push(sessionId);
     } else {
       result.cancelPendingSessionIds.push(sessionId);

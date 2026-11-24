@@ -78,7 +78,7 @@ flowchart TB
 
 **What it posts.** A general review comment, an approval, a request for changes, or inline review comments, depending on what the agent finds.
 
-**One review at a time.** When a review request or auto-review starts a new review of a PR, OpenInspect cancels that PR's previous review if it is still running. Cancellation is best effort: if it fails, the new review still runs and the cancel is retried on the PR's next review. Mentions are independent and are never cancelled by a review.
+**Replacing an earlier review.** When a review request or auto-review starts a new review of a PR, OpenInspect attempts to cancel that PR's previous review. Cancellation is best effort, so both reviews can run for a while: the earlier one may finish a turn it had already started, and if the cancel fails the new review still runs and the cancel is retried on the PR's next review. Mentions are independent and are never cancelled by a review.
 
 ## @mention actions
 

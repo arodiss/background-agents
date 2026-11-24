@@ -37,16 +37,17 @@ export class GitHubPrReviewStore {
   /**
    * Make `sessionId` its pull request's current review in one batch: displace
    * the current row, insert this one, and read back the displaced reviews still
-   * awaiting a cancel. A session that already has a row (current or displaced)
-   * claims nothing, so a repeated claim is a no-op and a displaced review can
-   * never take its pull request back.
+   * awaiting a cancel. A session that already has a row (current, displaced, or
+   * displaced and cancelled; rows are never deleted) claims nothing, so a
+   * repeated or replayed claim is a no-op and a displaced review can never take
+   * its pull request back.
    */
   async claim(input: GitHubPrReviewClaim, retryLimit: number): Promise<GitHubPrReviewClaimResult> {
     const [displaced, , pending] = await this.db.batch<SessionIdRow>([
       this.db
         .prepare(
           `UPDATE github_pr_review_sessions
-           SET superseded_by = ?, updated_at = ?
+           SET superseded_by = ?, cancel_pending = 1, updated_at = ?
            WHERE repository_id = ? AND pull_number = ?
              AND superseded_by IS NULL
              AND session_id != ?
@@ -75,7 +76,7 @@ export class GitHubPrReviewStore {
         .prepare(
           `SELECT session_id FROM github_pr_review_sessions
            WHERE repository_id = ? AND pull_number = ?
-             AND superseded_by IS NOT NULL
+             AND cancel_pending = 1
            ORDER BY updated_at DESC, session_id
            LIMIT ?`
         )
@@ -90,18 +91,22 @@ export class GitHubPrReviewStore {
     return { displacedSessionIds, retrySessionIds };
   }
 
-  /** Forget a displaced review once its cancel has succeeded or it had already ended. */
-  async deleteDisplaced(sessionId: string): Promise<void> {
+  /**
+   * Stop retrying a displaced review's cancel once it has succeeded or the session
+   * had already ended. The row stays, so a replayed claim for it is still refused.
+   */
+  async markCancelled(sessionId: string, now: number): Promise<void> {
     await this.db
       .prepare(
-        `DELETE FROM github_pr_review_sessions
-         WHERE session_id = ? AND superseded_by IS NOT NULL`
+        `UPDATE github_pr_review_sessions
+         SET cancel_pending = 0, updated_at = ?
+         WHERE session_id = ? AND cancel_pending = 1`
       )
-      .bind(sessionId)
+      .bind(now, sessionId)
       .run();
   }
 
-  /** True while a newer review has displaced this session and its cancel has not succeeded. */
+  /** True once a newer review of the same pull request has displaced this session. */
   async isSuperseded(sessionId: string): Promise<boolean> {
     const row = await this.db
       .prepare(

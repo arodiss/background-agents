@@ -73,15 +73,18 @@ describe("handleGitHubReviewSupersede", () => {
     return response.json();
   }
 
-  function rows(): Array<{ session_id: string; superseded_by: string | null }> {
+  type Row = { session_id: string; superseded_by: string | null; cancel_pending: number };
+
+  function rows(): Row[] {
     return sqlite
       .prepare(
-        `SELECT session_id, superseded_by FROM github_pr_review_sessions ORDER BY session_id`
+        `SELECT session_id, superseded_by, cancel_pending FROM github_pr_review_sessions
+         ORDER BY session_id`
       )
-      .all() as Array<{ session_id: string; superseded_by: string | null }>;
+      .all() as Row[];
   }
 
-  it("cancels the review it replaces and forgets it once cancelled", async () => {
+  it("cancels the review it replaces and stops retrying it once cancelled", async () => {
     await expect(claim("review-a")).resolves.toEqual({
       cancelledSessionIds: [],
       cancelPendingSessionIds: [],
@@ -92,7 +95,26 @@ describe("handleGitHubReviewSupersede", () => {
     });
 
     expect(cancelCalls).toEqual(["review-a"]);
-    expect(rows()).toEqual([{ session_id: "review-b", superseded_by: null }]);
+    expect(rows()).toEqual([
+      { session_id: "review-a", superseded_by: "review-b", cancel_pending: 0 },
+      { session_id: "review-b", superseded_by: null, cancel_pending: 0 },
+    ]);
+  });
+
+  it("refuses a replayed claim for a review that was already displaced and cancelled", async () => {
+    await claim("review-a");
+    await claim("review-b");
+    cancelCalls = [];
+
+    await expect(claim("review-a")).resolves.toEqual({
+      cancelledSessionIds: [],
+      cancelPendingSessionIds: [],
+    });
+    expect(cancelCalls).toEqual([]);
+    expect(rows()).toEqual([
+      { session_id: "review-a", superseded_by: "review-b", cancel_pending: 0 },
+      { session_id: "review-b", superseded_by: null, cancel_pending: 0 },
+    ]);
   });
 
   it("treats a session that is gone or already ended as cancelled", async () => {
@@ -102,7 +124,7 @@ describe("handleGitHubReviewSupersede", () => {
 
     cancelResult = () => Response.json({ error: "Session not found" }, { status: 404 });
     await expect(claim("review-c")).resolves.toMatchObject({ cancelledSessionIds: ["review-b"] });
-    expect(rows()).toEqual([{ session_id: "review-c", superseded_by: null }]);
+    expect(rows().filter((row) => row.cancel_pending === 1)).toEqual([]);
   });
 
   it("keeps the new review current when the cancel fails, and retries it on the next claim", async () => {
@@ -114,8 +136,8 @@ describe("handleGitHubReviewSupersede", () => {
       cancelPendingSessionIds: ["review-a"],
     });
     expect(rows()).toEqual([
-      { session_id: "review-a", superseded_by: "review-b" },
-      { session_id: "review-b", superseded_by: null },
+      { session_id: "review-a", superseded_by: "review-b", cancel_pending: 1 },
+      { session_id: "review-b", superseded_by: null, cancel_pending: 0 },
     ]);
     await expect(new GitHubPrReviewStore(db).isSuperseded("review-a")).resolves.toBe(true);
     await expect(new GitHubPrReviewStore(db).isSuperseded("review-b")).resolves.toBe(false);
@@ -128,7 +150,7 @@ describe("handleGitHubReviewSupersede", () => {
     });
     // The review this claim displaced goes before the older retry.
     expect(cancelCalls).toEqual(["review-b", "review-a"]);
-    expect(rows()).toEqual([{ session_id: "review-c", superseded_by: null }]);
+    expect(rows().filter((row) => row.cancel_pending === 1)).toEqual([]);
   });
 
   it("treats a thrown or timed-out cancel as a failure to retry", async () => {
@@ -154,8 +176,8 @@ describe("handleGitHubReviewSupersede", () => {
     // A displaced review re-claiming must not take its pull request back.
     await claim("review-a");
     expect(rows()).toEqual([
-      { session_id: "review-a", superseded_by: "review-b" },
-      { session_id: "review-b", superseded_by: null },
+      { session_id: "review-a", superseded_by: "review-b", cancel_pending: 1 },
+      { session_id: "review-b", superseded_by: null, cancel_pending: 0 },
     ]);
     expect(cancelCalls).toEqual(["review-a"]);
   });
