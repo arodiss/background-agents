@@ -295,19 +295,19 @@ request-lifetime durability window and makes retries safe across all providers.
 
 ### Automations
 
-| Endpoint                          | Method | Description                                                             |
-| --------------------------------- | ------ | ----------------------------------------------------------------------- |
-| `/automations`                    | GET    | List automations                                                        |
-| `/automations`                    | POST   | Create automation                                                       |
-| `/automations/:id`                | GET    | Get automation                                                          |
-| `/automations/:id`                | PUT    | Update automation                                                       |
-| `/automations/:id`                | DELETE | Soft-delete automation                                                  |
-| `/automations/:id/pause`          | POST   | Pause (stop firing)                                                     |
-| `/automations/:id/resume`         | POST   | Resume; resets the failure counter                                      |
-| `/automations/:id/trigger`        | POST   | Fire now → `201 {invocationId, runs}`, `409` if an invocation is active |
-| `/automations/:id/invocations`    | GET    | Run history: one entry per firing, with child runs                      |
-| `/automations/:id/runs/:runId`    | GET    | Get one run                                                             |
-| `/automations/:id/regenerate-key` | POST   | Rotate a webhook automation's API key                                   |
+| Endpoint                          | Method | Description                                                              |
+| --------------------------------- | ------ | ------------------------------------------------------------------------ |
+| `/automations`                    | GET    | List automations                                                         |
+| `/automations`                    | POST   | Create automation                                                        |
+| `/automations/:id`                | GET    | Get automation                                                           |
+| `/automations/:id`                | PUT    | Update automation                                                        |
+| `/automations/:id`                | DELETE | Soft-delete automation                                                   |
+| `/automations/:id/pause`          | POST   | Pause (stop firing)                                                      |
+| `/automations/:id/resume`         | POST   | Resume; resets the failure counter                                       |
+| `/automations/:id/trigger`        | POST   | Fire now → `201 {invocationId, runs}`, `409` at the concurrent run limit |
+| `/automations/:id/invocations`    | GET    | Run history: one entry per firing, with child runs                       |
+| `/automations/:id/runs/:runId`    | GET    | Get one run                                                              |
+| `/automations/:id/regenerate-key` | POST   | Rotate a webhook automation's API key                                    |
 
 An automation targets repositories (`repositories: [{repoOwner, repoName, baseBranch?}]`) and/or
 environments (`environmentIds: ["env_…"]`) — up to 10 combined; multi-target selections require a

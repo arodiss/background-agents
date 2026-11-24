@@ -736,9 +736,9 @@ export const TOOLS: ToolDefinition[] = [
       "using runs[].id, or its session with get_session_events on the run's sessionId. The run " +
       "uses no permission the token was not granted, even where the automation's owner holds " +
       "it. The schedule is untouched — a manual run is an extra run, not a replacement for the " +
-      "next scheduled one. Fails with 409 while the automation already has as many runs in " +
-      "progress as its concurrent run limit allows (one by default), and does not queue " +
-      "behind them.",
+      "next scheduled one. Fails with 409 while the automation already has as many firings " +
+      "in progress as its concurrent run limit allows (one by default; a firing counts once " +
+      "however many child runs it has), and does not queue behind them.",
     inputSchema: { automation_id: automationId },
     run: (client, args) =>
       client.post(`/automations/${encodeURIComponent(args.automation_id)}/trigger`, {}),

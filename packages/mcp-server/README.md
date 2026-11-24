@@ -194,8 +194,9 @@ Ask the agent to open one in a prompt.
 
 - `trigger_automation` runs one now, outside its schedule. It returns the invocation id and its
   child runs; read one with `get_automation_run`. It fails with `409` while the automation already
-  has as many runs in progress as its `max_concurrent_runs` allows. The invocation records its
-  author as `unknown`, since a token does not establish whether a person or an agent fired it.
+  has as many firings in progress as its `max_concurrent_runs` allows; a firing counts once however
+  many child runs it has. The invocation records its author as `unknown`, since a token does not
+  establish whether a person or an agent fired it.
 
 ### Skill writes
 
