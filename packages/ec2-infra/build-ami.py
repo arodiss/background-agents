@@ -38,8 +38,7 @@ BUILD_TIMEOUT_SECONDS = 60 * 60
 VERIFY_TIMEOUT_SECONDS = 20 * 60
 IMAGE_TIMEOUT_SECONDS = 45 * 60
 CONSOLE_TAIL_CHARS = 4000
-# EC2 can publish an instance's console output several minutes after it powers off (about eight
-# minutes was observed in eu-west-2), so a stopped step instance is read for this long.
+# EC2 can publish an instance's console output several minutes after it powers off
 CONSOLE_LAG_SECONDS = 10 * 60
 
 
@@ -147,9 +146,11 @@ class Ec2ImageBuilder:
     def wait_for_lagging_marker(self, instance_id: str, console: str) -> None:
         """Waits out the console's publication lag after a stop before reading the step's result."""
         deadline = time.monotonic() + CONSOLE_LAG_SECONDS
-        while OK_MARKER not in console:
+        while True:
             if FAILED_MARKER in console:
                 raise step_failed(instance_id, console)
+            if OK_MARKER in console:
+                return
             if time.monotonic() >= deadline:
                 raise ImageBuildError(f"{instance_id} stopped without reporting success")
             time.sleep(POLL_INTERVAL_SECONDS)
